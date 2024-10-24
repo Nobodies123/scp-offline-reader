@@ -2,12 +2,16 @@ from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
+from kivy.uix.label import Label  # 用于在非 Android 环境中显示占位符
 from jnius import autoclass
 import sqlite3
+import platform
 
-WebView = autoclass("android.webkit.WebView")
-WebViewClient = autoclass("android.webkit.WebViewClient")
-PythonActivity = autoclass("org.kivy.android.PythonActivity")
+# 仅在 Android 环境中运行
+if platform.system() == "Android":
+    WebView = autoclass("android.webkit.WebView")
+    WebViewClient = autoclass("android.webkit.WebViewClient")
+    PythonActivity = autoclass("org.kivy.android.PythonActivity")
 
 
 class BrowserScreen(BoxLayout):
@@ -35,11 +39,15 @@ class BrowserScreen(BoxLayout):
         self.home_button.bind(on_release=self.go_home)
         self.toolbar.add_widget(self.home_button)
 
-        # 添加WebView
-        self.webview = WebView(PythonActivity.mActivity)
-        self.webview.getSettings().setJavaScriptEnabled(True)
-        self.webview.setWebViewClient(WebViewClient())
-        self.add_widget(self.webview)
+        # 添加WebView或占位符
+        if platform.system() == "Android":
+            self.webview = WebView(PythonActivity.mActivity)
+            self.webview.getSettings().setJavaScriptEnabled(True)
+            self.webview.setWebViewClient(WebViewClient())
+            self.add_widget(self.webview)
+        else:
+            self.webview = Label(text="WebView Placeholder (Only available on Android)")
+            self.add_widget(self.webview)
 
         # 连接到SQLite数据库
         self.connection = sqlite3.connect("local_db.db")
@@ -59,25 +67,28 @@ class BrowserScreen(BoxLayout):
 
     def load_url(self, url):
         self.url_input.text = url
-        self.cursor.execute("SELECT content FROM web_content WHERE url=?", (url,))
-        row = self.cursor.fetchone()
-        if row:
-            content = row[0]
-            self.webview.loadData(content, "text/html", "utf-8")
+        if platform.system() == "Android":
+            self.cursor.execute("SELECT content FROM web_content WHERE url=?", (url,))
+            row = self.cursor.fetchone()
+            if row:
+                content = row[0]
+                self.webview.loadData(content, "text/html", "utf-8")
+            else:
+                self.webview.loadUrl(url)
+                self.webview.setWebViewClient(WebViewClient())
+                self.webview.setWebViewClient(self.CustomWebViewClient(self))
         else:
-            self.webview.loadUrl(url)
-            self.webview.setWebViewClient(WebViewClient())
-            self.webview.setWebViewClient(self.CustomWebViewClient(self))
+            self.webview.text = f"Loading URL: {url} (Only available on Android)"
 
     def on_enter_url(self, instance):
         self.load_url(instance.text)
 
     def go_back(self, instance):
-        if self.webview.canGoBack():
+        if platform.system() == "Android" and self.webview.canGoBack():
             self.webview.goBack()
 
     def go_forward(self, instance):
-        if self.webview.canGoForward():
+        if platform.system() == "Android" and self.webview.canGoForward():
             self.webview.goForward()
 
     def go_home(self, instance):
